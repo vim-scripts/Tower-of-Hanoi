@@ -1,18 +1,22 @@
 " hanoi.vim -- Tower of Hanoi game for Vim
 " Author: Hari Krishna (hari_vim at yahoo dot com)
-" Last Change: 05-Feb-2004 @ 10:12
+" Last Change: 09-Feb-2004 @ 12:34
 " Created: 29-Jan-2004
 " Requires: Vim-6.2, multvals.vim(3.4), genutils.vim(1.10)
-" Version: 1.0.0
+" Version: 1.1.0
 " Licence: This program is free software; you can redistribute it and/or
 "          modify it under the terms of the GNU General Public License.
 "          See http://www.gnu.org/copyleft/gpl.txt 
+" Acknowledgements:
+"   - Thanks to Anoine J. Mechelynck (antoine dot Mechelynck at belgacom dot
+"     net) for reporting problems and giving feedback.
 " Download From:
-"     http://www.vim.org/script.php?script_id=
+"     http://www.vim.org/script.php?script_id=900
 " Description:
 " TODO:
 
 if exists('loaded_hanoi')
+  call s:Hanoi()
   finish
 endif
 
@@ -49,8 +53,6 @@ let s:MINWIDTH = 3 " Width of the disk with ID = 1.
 
 let s:playPaused = 0
 
-command! -nargs=? THanoi :call <SID>Hanoi(<args>)
-
 function! s:SetupBuf()
   let s:MAXX = winwidth(0)
   let s:MAXY = winheight(0)
@@ -66,6 +68,7 @@ function! s:SetupBuf()
   setlocal nonumber
   setlocal foldcolumn=0 nofoldenable
   setlocal tabstop=1
+  setlocal nolist
 
   " Setup syntax such a way that any non-tabs appear as selected.
   syn clear
@@ -73,7 +76,7 @@ function! s:SetupBuf()
   hi HanoiSelected guifg=grey90 guibg=black gui=reverse
 endfunction
 
-function! s:Hanoi(...)
+function! s:Hanoi()
   if s:myBufNum == -1
     " Temporarily modify isfname to avoid treating the name as a pattern.
     let _isf = &isfname
@@ -106,56 +109,58 @@ function! s:Hanoi(...)
   try
     setlocal modifiable
 
-
     let restCurs = substitute(GetVimCmdOutput('hi Cursor'),
-          \ '\_s*Cursor\s*xxx\s*', 'hi Cursor ', '')
+          \ '^\(\n\|\s\)*Cursor\s*xxx\s*', 'hi Cursor ', '')
     let hideCurs = substitute(GetVimCmdOutput('hi Normal'),
-          \ '\_s*Normal\s*xxx\s*', 'hi Cursor ', '')
+          \ '^\(\n\|\s\)*Normal\s*xxx\s*', 'hi Cursor ', '')
+    " Font attribute for Cursor doesn't seem to be really used, and it might
+    " cause trouble if has spaces in it, so just remove this attribute.
+    let restCurs = substitute(restCurs, ' font=.\{-}\(\w\+=\|$\)\@=', ' ', '')
+    let hideCurs = substitute(hideCurs, ' font=.\{-}\(\w\+=\|$\)\@=', ' ', '')
 
-    if s:playPaused
-      exec hideCurs
-      call s:play()
-      return
+    let option = 'p'
+    if !s:playPaused
+      call s:SetupBuf()
+
+      if !exists('g:hanoiNDisks') || g:hanoiNDisks == ''
+        let number = s:welcome()
+      else
+        let number = g:hanoiNDisks
+      endif
+      if ! s:Initialize(number)
+        quit
+        return
+      endif
+
+      "exec "normal \<C-G>a" " Create an undo point.
+      "call s:putstr(s:MAXY/2, s:MAXX/2-20,
+      "      \ 'You want to play or see the Demo(p, d)?[p] ')
+      "redraw
+      echon 'You want to play or see the Demo(p, d)?[p] '
+      let option = getchar()
+      "silent! undo
+      if option == '^\d\+$' || type(option) == 0
+        let option = nr2char(option)
+      endif " It is the ascii code.
     endif
-
-    call s:SetupBuf()
-
-    if a:0 == 0
-      let number = s:welcome()
-    else
-      let number = a:1
-    endif
-    if ! s:Initialize(number)
-      quit
-      return
-    endif
-
-    "exec "normal \<C-G>a" " Create an undo point.
-    "call s:putstr(s:MAXY/2, s:MAXX/2-20,
-    "      \ 'You want to play or see the Demo(p, d)?[p] ')
-    "redraw
-    echon 'You want to play or see the Demo(p, d)?[p] '
-    let char = getchar()
-    "silent! undo
-    if char == '^\d\+$' || type(char) == 0
-      let char = nr2char(char)
-    endif " It is the ascii code.
 
     exec hideCurs
-    if char == "d"
+    if option == "d"
       call s:demo()
     else
       call s:play()
     endif
+  catch /^Vim:Interrupt$/
+    " Do nothing.
   finally
     exec restCurs | " Restore the cursor highlighting.
-    setlocal nomodifiable
+    call setbufvar(s:myBufNum, '&modifiable', 1)
   endtry
 endfunction
 
 function! s:welcome()
   call s:clear()
-  call s:putstr(s:MAXY/2 - 4, s:MAXX/2 - 15, 'T O W E R S   O F   H A N O I')
+  call s:putstr(s:MAXY/2 - 4, s:MAXX/2 - 15, 'T O W E R   O F   H A N O I')
   call s:putstr(s:MAXY/2, 1, 'Move all the disks from the I pole to III pole')
   call s:putstr(s:MAXY/2 + 2, 1, 'Bigger disk on a Smaller one is not allowd')
   call s:putstr(s:MAXY/2 + 4, 1, "Use 'h' & 'l' keys to Select the pole" .
