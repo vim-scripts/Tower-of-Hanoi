@@ -1,9 +1,9 @@
 " hanoi.vim -- Tower of Hanoi game for Vim
 " Author: Hari Krishna (hari_vim at yahoo dot com)
-" Last Change: 19-Feb-2004 @ 09:46
+" Last Change: 20-Feb-2004 @ 17:16
 " Created: 29-Jan-2004
 " Requires: Vim-6.2, multvals.vim(3.4), genutils.vim(1.10)
-" Version: 1.2.1
+" Version: 1.3.0
 " Licence: This program is free software; you can redistribute it and/or
 "          modify it under the terms of the GNU General Public License.
 "          See http://www.gnu.org/copyleft/gpl.txt 
@@ -32,14 +32,14 @@ if !exists('loaded_multvals')
   runtime plugin/multvals.vim
 endif
 if !exists('loaded_multvals') || loaded_multvals < 304
-  echomsg 'hanoi: You do not have the latest version of multvals.vim'
+  echomsg 'hanoi: You need the latest version of multvals.vim plugin'
   finish
 endif
 if !exists('loaded_genutils')
   runtime plugin/genutils.vim
 endif
 if !exists('loaded_genutils') || loaded_genutils < 110
-  echomsg 'hanoi: You do not have the latest version of genutils.vim'
+  echomsg 'hanoi: You need the latest version of genutils.vim plugin'
   finish
 endif
 let loaded_hanoi = 1
@@ -96,11 +96,15 @@ function! s:SetupBuf()
   setlocal foldcolumn=0 nofoldenable
   setlocal tabstop=1
   setlocal nolist
+  setlocal bufhidden=hide
 
   " Setup syntax such a way that any non-tabs appear as selected.
   syn clear
   syn match HanoiSelected "[^\t]"
-  hi HanoiSelected guifg=grey90 guibg=black gui=reverse
+  hi HanoiSelected gui=reverse term=reverse cterm=reverse
+ 
+  " Let pressing space again resume a paused game.
+  nnoremap <buffer> <Space> :Hanoi<CR>
 endfunction
 
 function! s:Hanoi()
@@ -184,7 +188,7 @@ function! s:Hanoi()
   finally
     exec restCurs | " Restore the cursor highlighting.
     let &guicursor = _gcr
-    call setbufvar(s:myBufNum, '&modifiable', 1)
+    call setbufvar(s:myBufNum, '&modifiable', !s:playPaused)
   endtry
 endfunction
 
