@@ -1,0 +1,21 @@
+This is a mirror of http://www.vim.org/scripts/script.php?script_id=900
+
+Continuing the tradition of creating games for Vim, here is a Tower of Hanoi implementation. Best played in GUI version of Vim.
+
+- Comes with two modes, a demo mode and a play mode. 
+- You can start the game by using the command :Hanoi optionally passing the number of disks as an argument. 
+- If no argument is passed, you are prompted to enter a value. 
+- The maximum number of disks is determined based on the size of your vim window.
+- You will be prompted to choose between demo or play mode.
+- In demo mode, the script plays for you, just sit and relax.
+- In play mode, you can use h, j, k, l keys to move the disks from pole to pole. The disk with dashes represents the current disk that you can move.
+- Keys h and k select the current pole, and thus the top most disk on the pole.
+- Keys k and j move the disk up and down.
+- In play mode, you can pause the game by pressing <Space>, and come back by using :Hanoi command again.
+- You can stop the game at any time by pressing <C-C> or <C-Break>
+
+Good exerciese to practice hjkl key movements, if you are new to Vi realm :)
+
+
+
+Search_key_words: tower hanoi game games hari krishna dara
