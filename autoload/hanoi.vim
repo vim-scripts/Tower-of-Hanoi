@@ -1,48 +1,7 @@
-" hanoi.vim -- Tower of Hanoi game for Vim
-" Author: Hari Krishna (hari_vim at yahoo dot com)
-" Last Change: 20-Feb-2004 @ 17:16
-" Created: 29-Jan-2004
-" Requires: Vim-6.2, multvals.vim(3.4), genutils.vim(1.10)
-" Version: 1.3.0
-" Licence: This program is free software; you can redistribute it and/or
-"          modify it under the terms of the GNU General Public License.
-"          See http://www.gnu.org/copyleft/gpl.txt 
-" Acknowledgements:
-"   - Thanks to Anoine J. Mechelynck (antoine dot Mechelynck at belgacom dot
-"     net) for reporting problems and giving feedback.
-" Download From:
-"     http://www.vim.org/script.php?script_id=900
-" Description:
+" See plugin/hanoi.vim for details
 " TODO:
 "   - Implement level 2.
 "   - Smooth moves.
-
-if exists('loaded_hanoi')
-  call s:Hanoi()
-  finish
-endif
-
-if v:version < 602
-  echomsg 'You need Vim 6.2 to run this version of hanoi.vim.'
-  finish
-endif
-
-" Dependency checks.
-if !exists('loaded_multvals')
-  runtime plugin/multvals.vim
-endif
-if !exists('loaded_multvals') || loaded_multvals < 304
-  echomsg 'hanoi: You need the latest version of multvals.vim plugin'
-  finish
-endif
-if !exists('loaded_genutils')
-  runtime plugin/genutils.vim
-endif
-if !exists('loaded_genutils') || loaded_genutils < 110
-  echomsg 'hanoi: You need the latest version of genutils.vim plugin'
-  finish
-endif
-let loaded_hanoi = 1
 
 " Make sure line-continuations won't cause any problem. This will be restored
 "   at the end
@@ -63,6 +22,12 @@ if !exists('s:myBufNum')
   let s:myBufNum = -1
 endif
 
+if exists('s:NULL')
+  unlockvar! s:NULL
+endif
+let s:NULL = {}
+lockvar! s:NULL
+
 let s:GAP = 2 " Gap between the pole and disk at the top.
 let s:INCREMENT = 2 " Increment in width.
 let s:POLE_CLEARANCE = 2
@@ -71,12 +36,12 @@ let s:MINWIDTH = 3 " Width of the disk with ID = 1.
 let s:GAME_PAUSED = 'G A M E   P A U S E D'
 
 let s:playPaused = 0
-let s:pole{'moves'} = 0
+let s:moves = 0
+let s:disks = []
+let s:poles = []
 
-" These are like static variables of Pole.
-let s:pole{'curdisk'} = ''
-let s:pole{'curpole'} = ''
-let s:pole{'moves'} = ''
+let s:curdisk = s:NULL
+let s:curpole = s:NULL
 
 " Initialization }}}
 
@@ -90,7 +55,7 @@ function! s:SetupBuf()
   let s:MAX_DISKS = (s:MAXWIDTH - s:MINWIDTH)/s:INCREMENT
 
   call s:clear()
-  call SetupScratchBuffer()
+  call genutils#SetupScratchBuffer()
   setlocal noreadonly " Or it shows [RO] after the buffer name, not nice.
   setlocal nonumber
   setlocal foldcolumn=0 nofoldenable
@@ -107,7 +72,7 @@ function! s:SetupBuf()
   nnoremap <buffer> <Space> :Hanoi<CR>
 endfunction
 
-function! s:Hanoi()
+function! hanoi#Hanoi(nDisks)
   if s:myBufNum == -1
     " Temporarily modify isfname to avoid treating the name as a pattern.
     let _isf = &isfname
@@ -141,9 +106,9 @@ function! s:Hanoi()
   try
     setlocal modifiable
 
-    let restCurs = substitute(GetVimCmdOutput('hi Cursor'),
+    let restCurs = substitute(genutils#GetVimCmdOutput('hi Cursor'),
           \ '^\(\n\|\s\)*Cursor\s*xxx\s*', 'hi Cursor ', '')
-    let hideCurs = substitute(GetVimCmdOutput('hi Normal'),
+    let hideCurs = substitute(genutils#GetVimCmdOutput('hi Normal'),
           \ '^\(\n\|\s\)*Normal\s*xxx\s*', 'hi Cursor ', '')
     " Font attribute for Cursor doesn't seem to be really used, and it might
     " cause trouble if has spaces in it, so just remove this attribute.
@@ -154,10 +119,10 @@ function! s:Hanoi()
     if !s:playPaused
       call s:SetupBuf()
 
-      if g:hanoiNDisks == ''
+      if a:nDisks == ''
         let number = s:welcome()
       else
-        let number = g:hanoiNDisks
+        let number = a:nDisks+0
       endif
       if ! s:Initialize(number)
         quit
@@ -176,7 +141,9 @@ function! s:Hanoi()
       endif " It is the ascii code.
     endif
 
+    " This is like "hi Cursor guifg=White guibg=grey20" for desert color scheme.
     exec hideCurs
+    " FIXME: This generates "W18: Invalid character in group name"
     set guicursor=n-i:hor1:ver1
     if option == "d"
       call s:demo()
@@ -232,35 +199,38 @@ function! s:Initialize(number)
   " Create 3 poles.
   let nPoles = 3
   let i = 0
+  let prevpole = s:NULL
+  let s:poles = []
   while i < nPoles
-    call s:PoleCreate(i, s:polepos, s:MAXX/6*(2*i+1), s:poleheight, s:GAP,
+    let pole = s:polecls.new(i, s:polepos, s:MAXX/6*(2*i+1), s:poleheight, s:GAP,
 	  \ s:number)
-    call s:PoleDraw(i, s:MINWIDTH, s:INCREMENT)
-    if i > 0
-      call s:PoleSetNext(i - 1, i)
-      call s:PoleSetPrev(i, i - 1)
+    call add(s:poles, pole)
+    call pole.Draw(s:MINWIDTH, s:INCREMENT)
+    if prevpole isnot s:NULL
+      let prevpole.next = pole
+      let pole.prev = prevpole
     endif
-    if i == (nPoles - 1)
-      call s:PoleSetPrev(0, i)
-      call s:PoleSetNext(i, 0)
-    endif
-    let i = i + 1
+    let i += 1
+    let prevpole = pole
   endwhile
+  let s:poles[0].prev = s:poles[-1]
+  let s:poles[-1].next = s:poles[0]
 
   let i = s:number
+  let s:disks = []
   while i > 0
     " Create disks.
-    call s:DiskCreate(i, s:MINWIDTH, s:INCREMENT)
-    call s:DiskSetIsOn(i, 1)
-    call s:PolePushDisk(0, i)
-    call s:DiskDraw(i, ' ', 1)
-    let i = i - 1
+    let disk = s:diskcls.new(i, s:MINWIDTH, s:INCREMENT)
+    call add(s:disks, disk)
+    let disk.ison = 1
+    call s:poles[0].PushDisk(disk)
+    call disk.Draw(' ', 1)
+    let i -= 1
   endwhile
-  let s:pole{'curdisk'} = i + 1
-  call s:DiskDraw(s:pole{'curdisk'}, '-', 1)
-  let s:pole{'curpole'} = 0
-
-  let s:pole{'moves'} = 0
+  let s:curdisk = s:disks[-1]
+  call s:curdisk.Draw('-', 1)
+  let s:curpole = s:poles[0]
+  let s:moves = 0
 
   return 1
 endfunction
@@ -273,7 +243,7 @@ function! s:play()
   endif
   let s:playPaused = 0
   redraw
-  while !(s:PoleNOD(2) == s:number && s:DiskIsOn(s:pole{'curdisk'}))
+  while !(s:poles[-1].NOD() == s:number && s:curdisk.ison)
     let char = getchar()
     if char == '^\d\+$' || type(char) == 0
       let char = nr2char(char)
@@ -291,14 +261,14 @@ function! s:play()
     elseif char == 'j' " DOWN
       call s:PoleDiskDown()
     elseif char == 'l' " RIGHT
-      if ! s:PoleMoveDisk(s:PoleNext(s:pole{'curpole'}))
+      if ! s:PoleMoveDisk(s:curpole.next)
         " If the disk is on the pole.
-        call s:PoleSelectPole(s:PoleNextPole(s:pole{'curpole'}))
+        call s:PoleSelectPole(s:curpole.next)
       endif
     elseif char == 'h' " LEFT
-      if ! s:PoleMoveDisk(s:PolePrev(s:pole{'curpole'}))
+      if ! s:PoleMoveDisk(s:curpole.prev)
         " If the disk is on the pole.
-        call s:PoleSelectPole(s:PolePrevPole(s:pole{'curpole'}))
+        call s:PoleSelectPole(s:curpole.prev)
       endif
     endif
     call s:ShowMoves()
@@ -307,60 +277,60 @@ function! s:play()
 endfunction
 
 function! s:ShowMoves()
-  call s:putstrcentered(s:MAXY, 'Moves: ' . s:pole{'moves'}) | redraw
+  call s:putstrcentered(s:MAXY, 'Moves: ' . s:moves) | redraw
 endfunction
 
 function! s:demo()
-  let pole = 0
+  let polenr = 0
   let i = 0
   while i < s:number
-    call s:move(0, pole, 2) " Ultimate target.
-    if (pole)
-      let pole = 0
+    call s:move(0, polenr, 2) " Ultimate target.
+    if (polenr)
+      let polenr = 0
     else
-      let pole = 1
+      let polenr = 1
     endif
     let i = i + 1
   endwhile
 endfunction
 
 " Move the disk at the given position from source pole to destination pole.
-function! s:move(position, sp, dp)
-  let op = 3 - a:sp - a:dp " Find the other pole.
+function! s:move(position, spnr, dpnr)
+  let opnr = 3 - a:spnr - a:dpnr " Find the other pole.
   let position = a:position
 
-  while position < (s:PoleNOD(a:sp) - 1) " While this is not the top most disk,
+  while position < (s:poles[a:spnr].NOD() - 1) " While this is not the top most disk,
     " first move the disk that is above this disk to the other pole,
-    call s:move(position + 1, a:sp, op)
+    call s:move(position + 1, a:spnr, opnr)
 
-    let tmpNDisks = s:PoleNOD(a:dp)
+    let tmpNDisks = s:poles[a:dpnr].NOD()
     let i = 0
     " if the destination pole is not empty,
     if tmpNDisks
       " find the disk which is larger than the present,
       while i < tmpNDisks
-	if s:PoleGetDiskID(a:dp, tmpNDisks - i) >
-	      \ s:PoleGetDiskID(a:sp, position + 1)
+	if s:poles[a:dpnr].GetDiskID(tmpNDisks - i) >
+	      \ s:poles[a:spnr].GetDiskID(position + 1)
 	  break
 	endif
-	let i = i + 1
+	let i += 1
       endwhile
     endif
     " and move all the disks that are above this disk to the other pole, such
     " that the disk can be placed on the destination pole,
     if i
-      call s:move(tmpNDisks - i, a:dp, op) " Results in a recursive call.
+      call s:move(tmpNDisks - i, a:dpnr, opnr) " Results in a recursive call.
     endif
   endwhile
   " and finally move the disk that was asked for.
   call s:delay()
-  call s:PoleSelectPole(a:sp)
+  call s:PoleSelectPole(s:poles[a:spnr])
   redraw
   call s:delay()
   call s:PoleDiskUp()
   call s:ShowMoves()
   call s:delay()
-  call s:PoleMoveDisk(a:dp)
+  call s:PoleMoveDisk(s:poles[a:dpnr])
   call s:ShowMoves()
   call s:delay()
   call s:PoleDiskDown()
@@ -426,16 +396,16 @@ function! s:putstrcentered(y, str)
 endfunction
 
 function! s:clear()
-  call OptClearBuffer()
+  call genutils#OptClearBuffer()
   " Fill the buffer with tabs.
-  let tabFill = substitute(GetSpacer(s:MAXX), ' ', "\t", 'g')
+  let tabFill = substitute(genutils#GetSpacer(s:MAXX), ' ', "\t", 'g')
   while strlen(tabFill) < s:MAXX
     let tabFill = tabFill.strpart(tabFill, 0, s:MAXX - strlen(tabFill))
   endwhile
-  call setline(1, tabFill)
+  silent! call setline(1, tabFill)
   let i = 2
   while i <= s:MAXY
-    $put=tabFill
+    silent! $put=tabFill
     let i = i + 1
   endwhile 
 endfunction
@@ -447,178 +417,131 @@ endfunction
 
 " Pole {{{
 
-function! s:PoleCreate(pole, posy, posx, height, gap, maxno)
-  let s:pole{a:pole} = a:pole " Id
-  let s:pole{a:pole}{'y'} = a:posy
-  let s:pole{a:pole}{'x'} = a:posx
-  let s:pole{a:pole}{'height'} = a:height
-  let s:pole{a:pole}{'gap'} = a:gap
-  let s:pole{a:pole}{'disks'} = ''
-  let s:pole{a:pole}{'maxno'} = a:maxno " Capacity.
-  let s:pole{a:pole}{'next'} = '' " Next pole.
-  let s:pole{a:pole}{'prev'} = '' " Previous pole.
+" To facilitate dynamic reloading.
+if exists('s:polecls')
+  unlockvar! s:polecls
+endif
+
+let s:polecls = {}
+function! s:polecls.new(id, posy, posx, height, gap, maxno)
+  let pole = copy(s:polecls)
+  unlockvar! pole
+  let pole.id = a:id " Id
+  let pole.y = a:posy
+  let pole.x = a:posx
+  let pole.height = a:height
+  let pole.gap = a:gap
+  let pole.disks = []
+  let pole.maxno = a:maxno " Capacity.
+  let pole.next = s:NULL " Next pole.
+  let pole.prev = s:NULL " Previous pole.
+  return pole
 endfunction
 
-function! s:PoleY(pole)
-  return s:pole{a:pole}{'y'}
+function! s:polecls.NOD()
+  return len(self.disks)
 endfunction
 
-function! s:PoleX(pole)
-  return s:pole{a:pole}{'x'}
+function! s:polecls.TopId()
+  return (self.NOD() < 2) ? self.maxno + 1 : self.disks[self.NOD() - 2].id
 endfunction
 
-function! s:PoleHeight(pole)
-  return s:pole{a:pole}{'height'}
-endfunction
-
-function! s:PoleGap(pole)
-  return s:pole{a:pole}{'gap'}
-endfunction
-
-function! s:PoleNOD(pole)
-  return MvNumberOfElements(s:PoleDisks(a:pole), ',')
-endfunction
-
-function! s:PoleDisks(pole)
-  return s:pole{a:pole}{'disks'}
-endfunction
-
-function! s:PoleNext(pole)
-  return s:pole{a:pole}{'next'}
-endfunction
-
-function! s:PolePrev(pole)
-  return s:pole{a:pole}{'prev'}
-endfunction
-
-function! s:PoleSetDisks(pole, disks)
-  let s:pole{a:pole}{'disks'} = a:disks
-endfunction
-
-function! s:PoleSetNext(pole, next)
-  let s:pole{a:pole}{'next'} = a:next
-endfunction
-
-function! s:PoleSetPrev(pole, prev)
-  let s:pole{a:pole}{'prev'} = a:prev
-endfunction
-
-function! s:PoleMaxNo(pole)
-  return s:pole{a:pole}{'maxno'}
-endfunction
-
-function! s:PoleTopId(pole)
-  return (s:PoleNOD(a:pole) < 2) ? s:PoleMaxNo(a:pole) + 1 :
-        \ MvElementAt(s:PoleDisks(a:pole), ',', s:PoleNOD(a:pole) - 2)
-endfunction
-
-function! s:PolePushDisk(pole, disk)
+function! s:polecls.PushDisk(disk)
   " CHECK: if the current top disk is bigger than this disk.
-  call s:PoleSetDisks(a:pole, MvAddElement(s:PoleDisks(a:pole), ',', a:disk))
-  "call s:PoleSetNOD(a:pole, s:PoleNOD(a:pole) + 1)
-  call s:DiskMoveTo(a:disk, a:pole, s:PoleNOD(a:pole))
+  call add(self.disks, a:disk)
+  call a:disk.MoveTo(self, self.NOD())
 endfunction
 
-function! s:PolePopDisk(pole)
+function! s:polecls.PopDisk()
   " CHECK: if there are any other disks which are not on the poles.
-  let disk = MvLastElement(s:PoleDisks(a:pole), ',')
-  call s:PoleSetDisks(a:pole, MvRemoveElement(s:PoleDisks(a:pole), ',', disk))
-  "call s:PoleSetNOD(a:pole, s:PoleNOD(a:pole) - 1)
-  "call s:DiskSetIsOn(a:disk, 0)
-  return disk
+  return remove(self.disks, -1)
 endfunction
 
-function! s:PoleGetDisk(pole, pos)
-  return MvElementAt(s:PoleDisks(a:pole), ',', a:pos - 1)
+function! s:polecls.GetDisk(pos)
+  return self.disks[a:pos - 1]
 endfunction
 
 " Get the disk id of the disk at the given position.
-function! s:PoleGetDiskID(pole, pos)
-  return (s:PoleNOD(a:pole) >= a:pos) ? s:PoleGetDisk(a:pole, a:pos) :
-	\ 0 " 0 for no disks.
+function! s:polecls.GetDiskID(pos)
+  return (self.NOD() >= a:pos) ? self.GetDisk(a:pos).id : 0 " 0 for no disks.
 endfunction
 
-function! s:PoleDraw(pole, min, inc)
-  let y = s:PoleY(a:pole)
-  let x = s:PoleX(a:pole)
-  let height = s:PoleHeight(a:pole)
-  let maxno = s:PoleMaxNo(a:pole)
+function! s:polecls.Draw(min, inc)
+  call s:putcol(self.y-self.height, self.y, self.x, ' ')
 
-  call s:putcol(y-height, y, x, ' ')
-
-  call s:DiskCreate(maxno+1, a:min, a:inc) " Dummy disk as a base.
-  call s:DiskSetIsOn(maxno+1, 1)
-  call s:DiskMoveTo(maxno+1, a:pole, 0) " Move to the base position.
-  call s:DiskDraw(maxno+1, ' ', 0)
+  let disk = s:diskcls.new(self.maxno+1, a:min, a:inc) " Dummy disk as a base.
+  let disk.ison = 1
+  call disk.MoveTo(self, 0) " Move to the base position.
+  call disk.Draw(' ', 0)
 endfunction
 
-" Get the next valid pole. Returns this when not found.
-function! s:PoleNextPole(pole)
-  let nextPole = s:PoleNext(a:pole)
-  while nextPole != a:pole
-    if s:PoleNOD(nextPole) != 0
+" Get the next valid pole. Returns self when not found.
+function! s:polecls.NextPole()
+  let nextPole = self.next
+  while nextPole != self
+    if nextPole.NOD() != 0
       break
     endif
-    let nextPole = s:PoleNext(nextPole)
+    let nextPole = nextPole.next
   endwhile
   return nextPole
 endfunction
 
-" Get the previous valid pole. Returns this when not found.
-function! s:PolePrevPole(pole)
-  let prevPole = s:PolePrev(a:pole)
-  while prevPole != a:pole
-    if s:PoleNOD(prevPole) != 0
+" Get the previous valid pole. Returns self when not found.
+function! s:polecls.PrevPole()
+  let prevPole = self.prev
+  while prevPole != self
+    if prevPole.NOD() != 0
       break
     endif
-    let prevPole = s:PolePrev(prevPole)
+    let prevPole = prevPole.prev
   endwhile
   return prevPole
 endfunction
 
 " Static methods of Pole.
 function! s:PoleSelectPole(newPole)
-  if s:pole{'curpole'} != a:newPole
-    call s:DiskDraw(s:pole{'curdisk'}, ' ', 1)
-    let s:pole{'curdisk'} = s:PoleGetDisk(a:newPole, s:PoleNOD(a:newPole))
-    call s:DiskDraw(s:pole{'curdisk'}, '-', 1)
-    let s:pole{'curpole'} = a:newPole
+  if s:curpole != a:newPole
+    call s:curdisk.Draw(' ', 1)
+    let s:curdisk = a:newPole.GetDisk(a:newPole.NOD())
+    call s:curdisk.Draw('-', 1)
+    let s:curpole = a:newPole
   endif
 endfunction
 
 " These functions always operate on the current disk.
 function! s:PoleMoveDisk(targetPole)
-  if ! s:DiskIsOn(s:pole{'curdisk'}) " If the disk is not on the pole.
-    call s:DiskErase(s:pole{'curdisk'})
-    call s:PolePopDisk(s:DiskPole(s:pole{'curdisk'}))
-    call s:PolePushDisk(a:targetPole, s:pole{'curdisk'})
-    call s:DiskDraw(s:pole{'curdisk'}, '-', 1)
-    let s:pole{'curpole'} = a:targetPole
-    let s:pole{'moves'} = s:pole{'moves'} + 1
+  if ! s:curdisk.ison " If the disk is not on the pole.
+    call s:curdisk.Erase()
+    call s:curdisk.pole.PopDisk()
+    call a:targetPole.PushDisk(s:curdisk)
+    call s:curdisk.Draw('-', 1)
+    let s:curpole = a:targetPole
+    let s:moves += 1
     return 1
   endif
   return 0
 endfunction
 
 function! s:PoleDiskUp()
-  if s:DiskIsOn(s:pole{'curdisk'}) " If only on.
-    call s:DiskErase(s:pole{'curdisk'})
-    call s:DiskSetIsOn(s:pole{'curdisk'}, 0)
-    call s:DiskDraw(s:pole{'curdisk'}, '-', 1)
-    let s:pole{'moves'} = s:pole{'moves'} + 1
+  if s:curdisk.ison " If only on.
+    call s:curdisk.Erase()
+    let s:curdisk.ison = 0
+    call s:curdisk.Draw('-', 1)
+    let s:moves += 1
     return 1
   endif
   return 0
 endfunction
 
 function! s:PoleDiskDown()
-  if ! s:DiskIsOn(s:pole{'curdisk'}) " If not already on only.
+  if ! s:curdisk.ison " If not already on only.
     " Allow only smaller disk.
-    if s:PoleTopId(s:DiskPole(s:pole{'curdisk'})) > s:pole{'curdisk'}
-      call s:DiskErase(s:pole{'curdisk'})
-      call s:DiskSetIsOn(s:pole{'curdisk'}, 1)
-      call s:DiskDraw(s:pole{'curdisk'}, '-', 1)
-      let s:pole{'moves'} = s:pole{'moves'} + 1
+    if s:curdisk.pole.TopId() > s:curdisk.id
+      call s:curdisk.Erase()
+      let s:curdisk.ison = 1
+      call s:curdisk.Draw('-', 1)
+      let s:moves += 1
       return 1
     endif
   endif
@@ -627,67 +550,54 @@ endfunction
 
 " Pole }}}
 
-
 " Disk {{{
 
-function! s:DiskCreate(disk, min, inc)
-  let s:disk{a:disk} = a:disk " Id
-  let s:disk{a:disk}{'width'} = a:min + a:inc * (a:disk - 1)
-  let s:disk{a:disk}{'pole'} = ''
-  let s:disk{a:disk}{'pos'} = ''
-  let s:disk{a:disk}{'ison'} = ''
+" To facilitate dynamic reloading.
+if exists('s:diskcls')
+  unlockvar! s:diskcls
+endif
+let s:diskcls = {}
+
+function! s:diskcls.new(id, min, inc)
+  let disk = copy(s:diskcls)
+  unlockvar! disk
+  let disk.id = a:id
+  let disk.width = a:min + a:inc * (a:id - 1)
+  let disk.pos = 0
+  let disk.ison = 0
+  let disk.pole = s:NULL
+  return disk
 endfunction
 
-function! s:DiskWidth(disk)
-  return s:disk{a:disk}{'width'}
+function! s:diskcls.MoveTo(pole, pos)
+  let self.pole = a:pole
+  let self.pos = a:pos
 endfunction
 
-function! s:DiskPole(disk)
-  return s:disk{a:disk}{'pole'}
+function! s:diskcls.Erase()
+  call self.DrawImpl("\t", (self.ison ? 2 : 0))
 endfunction
 
-function! s:DiskPos(disk)
-  return s:disk{a:disk}{'pos'}
+function! s:diskcls.Draw(ch, opt)
+  call self.DrawImpl(a:ch, a:opt)
 endfunction
 
-function! s:DiskIsOn(disk)
-  return s:disk{a:disk}{'ison'}
-endfunction
+function! s:diskcls.DrawImpl(ch, opt)
+  let y = self.ison ? self.pole.y - self.pos :
+        \ self.pole.y - self.pole.height - self.pole.gap
 
-function! s:DiskSetIsOn(disk, bool)
-  let s:disk{a:disk}{'ison'} = a:bool
-endfunction
-
-function! s:DiskMoveTo(disk, pole, pos)
-  let s:disk{a:disk}{'pole'} = a:pole
-  let s:disk{a:disk}{'pos'} = a:pos
-endfunction
-
-function! s:DiskErase(disk)
-  call s:DiskDrawImpl(a:disk, "\t", (s:DiskIsOn(a:disk) ? 2 : 0))
-endfunction
-
-function! s:DiskDraw(disk, ch, opt)
-  call s:DiskDrawImpl(a:disk, a:ch, a:opt)
-endfunction
-
-function! s:DiskDrawImpl(disk, ch, opt)
-  let pole = s:DiskPole(a:disk)
-  let width = s:DiskWidth(a:disk)
-  let position = s:DiskPos(a:disk)
-  let y = s:DiskIsOn(a:disk) ? s:PoleY(pole) - position :
-        \ s:PoleY(pole) - s:PoleHeight(pole) - s:PoleGap(pole)
-
-  let stx = s:PoleX(pole) - width/2
-  call s:putrow(y, stx, stx+width-1, a:ch)
+  let stx = self.pole.x - self.width/2
+  call s:putrow(y, stx, stx+self.width-1, a:ch)
   if a:opt == 1
     " Show the disk id in the middle.
-    call s:putstr(y, s:PoleX(pole), a:disk)
+    call s:putstr(y, self.pole.x, self.id)
   elseif a:opt == 2
     " Erasing, make sure pole is restored correctly.
-    call s:putstr(y, s:PoleX(pole), " ")
+    call s:putstr(y, self.pole.x, " ")
   endif
 endfunction
+
+lockvar! s:diskcls
  
 " Disk }}}
 
